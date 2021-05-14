@@ -1,0 +1,239 @@
+---
+title: "Dashboard Example"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: scroll
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(ggplot2)
+library(choroplethr)
+library(choroplethrZip)
+library(choroplethrMaps)
+
+setwd("C:/Users/tyler/Desktop/DATA FILES")
+#read in data
+sales <- read.csv("train.csv", stringsAsFactors=FALSE)%>%
+  mutate(Postal.Code = sprintf("%05d", Postal.Code))
+
+#summarize sales and transactions by levels
+#total
+Totalsales <- sales %>%
+  mutate(DATE = as.Date(Order.Date, "%d/%m/%Y"),
+         MONTH = month.abb[as.numeric(format(DATE, "%m"))],
+         YEAR = as.numeric(format(DATE, "%Y"))
+         )%>%
+  group_by(YEAR, MONTH)%>%
+  summarise(Tot.Sales = sum(Sales),
+            Tot.Transactions = n())
+#region
+Regionsales <- sales %>%
+         mutate(DATE = as.Date(Order.Date, "%d/%m/%Y"),
+                MONTH = month.abb[as.numeric(format(DATE, "%m"))],
+                YEAR = as.numeric(format(DATE, "%Y")))%>%
+         group_by(YEAR, MONTH, Region)%>%
+         summarise(Sales = sum(Sales),
+                   Transactions = n())%>%
+  left_join(., Totalsales, by = c("YEAR", "MONTH"))%>%
+  mutate(`Sales Distribution` = Sales/Tot.Sales,
+         `Transaction Distribution` = Transactions/Tot.Transactions)
+#state
+Statesales <- sales %>%
+  mutate(DATE = as.Date(Order.Date, "%d/%m/%Y"),
+         MONTH = month.abb[as.numeric(format(DATE, "%m"))],
+         YEAR = as.numeric(format(DATE, "%Y")))%>%
+  group_by(YEAR, MONTH, State)%>%
+  summarise(Sales = sum(Sales),
+            Transactions = n())%>%
+  left_join(., Totalsales, by = c("YEAR", "MONTH"))%>%
+  mutate(`Sales Distribution` = Sales/Tot.Sales,
+         `Transaction Distribution` = Transactions/Tot.Transactions)
+#segment
+Segmentsales <- sales %>%
+  mutate(DATE = as.Date(Order.Date, "%d/%m/%Y"),
+         MONTH = month.abb[as.numeric(format(DATE, "%m"))],
+         YEAR = as.numeric(format(DATE, "%Y")))%>%
+  group_by(YEAR, MONTH, Segment)%>%
+  summarise(Sales = sum(Sales),
+            Transactions = n())%>%
+  left_join(., Totalsales, by = c("YEAR", "MONTH"))%>%
+  mutate(`Sales Distribution` = Sales/Tot.Sales,
+         `Transaction Distribution` = Transactions/Tot.Transactions)
+#category
+Categorysales <- sales %>%
+  mutate(DATE = as.Date(Order.Date, "%d/%m/%Y"),
+         MONTH = month.abb[as.numeric(format(DATE, "%m"))],
+         YEAR = as.numeric(format(DATE, "%Y")))%>%
+  group_by(YEAR, MONTH, Category)%>%
+  summarise(Sales = sum(Sales),
+            Transactions = n())%>%
+  left_join(., Totalsales, by = c("YEAR", "MONTH"))%>%
+  mutate(`Sales Distribution` = Sales/Tot.Sales,
+         `Transaction Distribution` = Transactions/Tot.Transactions)
+#sub Category
+Sub.Categorysales <- sales %>%
+  mutate(DATE = as.Date(Order.Date, "%d/%m/%Y"),
+         MONTH = month.abb[as.numeric(format(DATE, "%m"))],
+         YEAR = as.numeric(format(DATE, "%Y")))%>%
+  group_by(YEAR, MONTH, Sub.Category)%>%
+  summarise(Sales = sum(Sales),
+            Transactions = n())%>%
+  left_join(., Totalsales, by = c("YEAR", "MONTH"))%>%
+  mutate(`Sales Distribution` = Sales/Tot.Sales,
+         `Transaction Distribution` = Transactions/Tot.Transactions)
+
+#Plots
+region.sales.plot <- Regionsales %>%
+  filter(YEAR >=2017) %>%
+  mutate(YEAR = as.factor(YEAR))%>%
+  ggplot() +
+  geom_line(aes(x = MONTH, y = `Sales Distribution`, group = YEAR, color = YEAR), size = 1)+
+  facet_wrap(.~Region)+
+  scale_x_discrete(limits = month.abb)+
+  labs(title = "Monthly Sales Distribution by Region")+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90))
+
+
+region.tx.plot <- Regionsales %>%
+  filter(YEAR >=2017) %>%
+  mutate(YEAR = as.factor(YEAR))%>%
+  ggplot() +
+  geom_line(aes(x = MONTH, y = `Transaction Distribution`, group = YEAR, color = YEAR), size = 1)+
+  facet_wrap(.~Region)+
+  scale_x_discrete(limits = month.abb)+
+  labs(title = "Monthly Transaction Distribution by Region")+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90))
+
+
+state.sales.plot <- Statesales %>%
+  filter(YEAR >=2017) %>%
+  mutate(YEAR = as.factor(YEAR))%>%
+  ggplot() +
+  geom_line(aes(x = MONTH, y = `Sales Distribution`, group = YEAR, color = YEAR), size = 1)+
+  facet_wrap(.~State)+
+  scale_x_discrete(limits = month.abb)+
+  # labs(title = "Monthly Sales Distribution by State")+
+  geom_rect(data = subset(Statesales, State %in% c("Indiana" ,"Washington")), 
+            fill = "yellow", alpha = 0.005, xmin = -Inf,xmax = Inf,
+            ymin = -Inf,ymax = Inf)+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90))
+
+
+category.plot <- Sub.Categorysales %>%
+  filter(YEAR >=2017) %>%
+  mutate(YEAR = as.factor(YEAR))%>%
+  ggplot() +
+  geom_line(aes(x = MONTH, y = `Sales Distribution`, group = YEAR, color = YEAR), size = 1)+
+  facet_wrap(.~Sub.Category)+
+  scale_x_discrete(limits = month.abb)+
+  # labs(title = "Monthly Category Sales Distribution")+
+  geom_rect(data = subset(Sub.Categorysales, Sub.Category == "Copiers"), 
+            fill = "yellow", alpha = 0.005, xmin = -Inf,xmax = Inf,
+            ymin = -Inf,ymax = Inf)+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90))
+
+
+category.plot2 <- Sub.Categorysales %>%
+  filter(YEAR >=2017) %>%
+  mutate(YEAR = as.factor(YEAR))%>%
+  ggplot() +
+  geom_line(aes(x = MONTH, y = `Transaction Distribution`, group = YEAR, color = YEAR), size = 1)+
+  facet_wrap(.~Sub.Category)+
+  scale_x_discrete(limits = month.abb)+
+  labs(title = "Monthly Category Transaction Distribution")+
+  geom_rect(data = subset(Sub.Categorysales, Sub.Category == "Copiers"), 
+            fill = "yellow", alpha = 0.005, xmin = -Inf,xmax = Inf,
+            ymin = -Inf,ymax = Inf)+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90))
+
+
+##################################################################################3
+#shipping time
+
+shipping <- sales %>%
+  mutate(Order.Date = as.Date(Order.Date, "%d/%m/%Y"),
+         Ship.Date = as.Date(Ship.Date, "%d/%m/%Y"))%>%
+  mutate(Days.to.ship = Ship.Date - Order.Date)%>%
+  group_by(State, City, Postal.Code)%>%
+  summarise(`Average Days to Ship` = round(mean(Days.to.ship),1))
+         
+shippingmap2017 <- sales %>%
+  mutate(DATE = as.Date(Order.Date, "%d/%m/%Y"),
+         YEAR = as.numeric(format(DATE, "%Y")),
+         Order.Date = as.Date(Order.Date, "%d/%m/%Y"),
+         Ship.Date = as.Date(Ship.Date, "%d/%m/%Y"))%>%
+    filter(YEAR ==2017)%>%
+  mutate(Days.to.ship = Ship.Date - Order.Date)%>%
+  group_by(State)%>%
+  summarise(`value` = as.integer(round(mean(Days.to.ship),1)))%>%
+  rename(region = State)%>%
+  mutate(region = tolower(region))
+
+shippingmap2018 <- sales %>%
+  mutate(DATE = as.Date(Order.Date, "%d/%m/%Y"),
+         YEAR = as.numeric(format(DATE, "%Y")),
+         Order.Date = as.Date(Order.Date, "%d/%m/%Y"),
+         Ship.Date = as.Date(Ship.Date, "%d/%m/%Y"))%>%
+    filter(YEAR ==2018)%>%
+  mutate(Days.to.ship = Ship.Date - Order.Date)%>%
+  group_by(State)%>%
+  summarise(`value` = as.integer(round(mean(Days.to.ship),1)))%>%
+  rename(region = State)%>%
+  mutate(region = tolower(region))
+
+#average days to ship state map
+statemap2017 <- state_choropleth(shippingmap2017,
+                 title      = "2017",
+                 num_colors = 1,
+                 legend     = "Days to Ship")
+
+#average days to ship state map
+statemap2018 <- state_choropleth(shippingmap2018,
+                 title      = "2018",
+                 num_colors = 1,
+                 legend     = "Days to Ship")
+
+```
+
+
+Region
+======================================================================
+### Monthly Sales & Transaction Distribution by Region
+```{r figures-side, fig.show="hold", out.width="50%"}
+region.sales.plot
+region.tx.plot
+```
+
+State
+======================================================================
+### Monthly Sales Distribution by State
+```{r echo=FALSE, error=TRUE, fig.height=16, fig.width=16, message=FALSE, warning=FALSE}
+state.sales.plot
+```
+
+Category
+======================================================================
+### Monthly Sales Distribution by Category
+```{r echo=FALSE, error=TRUE, fig.height=8, fig.width=14, message=FALSE, warning=FALSE}
+category.plot
+```
+
+Shipping
+======================================================================
+### Average Number of Days to Ship 
+
+```{r fig.show="hold", out.width="50%"}
+statemap2017
+statemap2018
+```
+
+Code
+======================================================================
+https://github.com/tkiser7/Portfolio/blob/main/flexdashboard.Rmd
