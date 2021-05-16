@@ -154,8 +154,8 @@ category.plot2 <- Sub.Categorysales %>%
   theme(axis.text.x = element_text(angle = 90))
 
 
-##################################################################################3
-#shipping time
+##################################################################################
+#calc shipping time for 2017 and 2018 and plot each each on a state map to see which states had the slowest/fastest shiping time
 
 shipping <- sales %>%
   mutate(Order.Date = as.Date(Order.Date, "%d/%m/%Y"),
@@ -200,6 +200,7 @@ statemap2018 <- state_choropleth(shippingmap2018,
                  num_colors = 1,
                  legend     = "Days to Ship")
 
+#Organize plots in dashboard
 ```
 
 
