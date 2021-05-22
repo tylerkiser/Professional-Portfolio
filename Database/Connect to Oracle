@@ -1,0 +1,13 @@
+  
+#========================================================================
+# connect to Oracle
+#========================================================================
+Sys.setenv(ORACLE_HOME = "/apps/oracle/product/12.1.0.2")
+Sys.setenv(ORACLE_SID = "ORCL")
+
+oraclePW <- ""
+oracleID <- ""
+oracleDB <- ""
+
+drv <- dbDriver("Oracle")
+conn <- dbConnect(drv, oracleID, oraclePW, dbname= oracleDB)
