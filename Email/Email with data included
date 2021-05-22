@@ -1,0 +1,37 @@
+
+
+#========================================================================
+#email using mailR
+#========================================================================
+
+library(mailR)
+library(xtable)
+BODY <- paste0("Good morning,
+<br>
+<br>
+example text 
+<br>
+<br>
+<strong>example text</strong>
+<br>
+<strong>", print(xtable(df), type="html"), 
+               "<br>
+                 <br>
+  
+  Please let me know if you have any questions,
+  <br>
+    <br>
+Thank you")
+
+
+send.mail(
+  from = "name@email.com"
+  , to = "name@email.comm", 
+  , cc = c("name@email.com", "name@email.com")
+  , subject = "Email subject"
+  , html = T
+  , body = BODY
+  , smtp = list(host.name = "mail.company.com", port = 25)
+  , authenticate = F
+  , send = T
+)
