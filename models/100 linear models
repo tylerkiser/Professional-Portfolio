@@ -1,0 +1,33 @@
+library(caret)
+
+#create a dataset
+set.seed(1) 
+Sigma <- 9*matrix(c(1.0, 0.5, 0.5, 1.0), 2, 2)
+dat <- MASS::mvrnorm(n = 100, c(69, 69), Sigma) %>%
+  data.frame() %>% setNames(c("x", "y"))
+set.seed(1)
+y <- dat$y
+
+#plot x and y
+dat%>%
+ggplot()+
+geom_point(aes(x,y))
+
+#check if x and y are correlated
+cor(dat)
+#y and y are moderately correlated
+
+#Create 100 linear models and calc the RMSE for each model, then calc the mean and stedv of the RMSE's from all the models
+RMSE<-replicate(100, { 
+  test_index <- createDataPartition(y, times = 1, p = 0.5, list = FALSE)
+  test_set <- dat %>% slice(test_index)
+  train_set <- dat %>% slice(-test_index)
+  fit <- lm(y ~ x, data = train_set)
+  y_hat <- predict(fit, test_set)
+  sqrt(mean((y_hat - test_set$y)^2))
+}) 
+RMSE
+
+mean(RMSE)
+#low volatility in the RMSE of the 100 models 
+sd(RMSE)
