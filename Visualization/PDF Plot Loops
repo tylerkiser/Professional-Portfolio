@@ -59,3 +59,13 @@ for(i in 1:length(DFlist)){
     labs(title = chartname, size = 14)+
     theme(plot.title = element_text(size = 18, face = "bold"),
           legend.position = "none")
+  n <- n_pages(NETCHART)
+  
+  #embedded loop for pdf output to plot charts throughout X number of pages
+  pdf(paste(chartname, ".pdf"), paper = "a4r", width = 11, height = 8.5)
+  for(i in 1:n){
+    print(NETCHART + facet_wrap_paginate(~COUNTYNM, ncol = 3, nrow = 3, scales = "free", page = i))
+  }
+  dev.off()
+  
+}
