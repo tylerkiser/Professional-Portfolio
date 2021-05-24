@@ -1,0 +1,38 @@
+--subquery framework 
+
+SELECT 
+nameofnewtableA.AGENT,
+nameofnewtableA.SALES,
+nameofnewtableB.STATE
+FROM
+(SELECT
+AGENT,
+SALES
+FROM
+SALESTABLE
+WHERE
+SALES > 1000) nameofnewtableA
+
+LEFT JOIN
+(SELECT
+AGENT,
+STATE
+FROM
+LOCATIONTABLE
+WHERE
+STATE= 'PA') nameofnewtableB
+ON 
+nameofnewtableA.AGENT = nameofnewtableB.AGENT
+GROUP BY
+nameofnewtableA.AGENT,
+nameofnewtableA.SALES,
+nameofnewtableB.STATE
+
+
+--show a list of all column names and then filter to ones that contain certain text in this case "Home"
+select COLUMN_NAME  
+from ALL_TAB_COLUMNS 
+where TABLE_NAME= 'EWT_POL_PROP_HOME'
+and
+COLUMN_NAME like  '%HOME%'
+
