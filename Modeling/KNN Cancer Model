@@ -1,0 +1,142 @@
+library(dplyr)
+library(class)
+library(gmodels)
+library(caret)
+
+setwd("C:/Users/tyler/Desktop/DATA FILES")
+#read in data
+wbcd <- read.csv("wisc_bc_data.csv", stringsAsFactors=FALSE)
+
+#remove ID collumn
+wbcd <- wbcd[-1]
+
+#how many malignant vs benign?
+table(wbcd$diagnosis)
+
+#reclassify feature as a factor and add labels (required for ML)
+wbcd$diagnosis <- factor(wbcd$diagnosis, levels = c("B", "M"),
+                         labels = c("Benign", "Malignant"))
+
+
+#percent malignant vs benign?
+round(prop.table(table(wbcd$diagnosis))*100, digits = 1)
+
+#summarize 3 features
+summary(wbcd[c("radius_mean", "area_mean", "smoothness_mean")])
+#all 3 features have different scales need to normalize
+
+#normalize function to normalize all data between 0 and 1
+norm <- function(x){
+  return((x-min(x))/(max(x)-min(x)))
+}
+
+#test the norm function
+norm(c(1,2,3,4,5))
+norm(c(100,200,300,400,500))
+
+#normalize all of the columns in the df using lappy (skip col 1)
+wbcd_norm <- as.data.frame(lapply(wbcd[2:31], norm))
+
+#check summary of normalized data
+summary(wbcd_norm[c("radius_mean", "area_mean", "smoothness_mean")])
+
+#split train test, data is random no need to randomize
+wbcd_train <- wbcd_norm[1:469,]
+wbcd_test <- wbcd_norm[470:569,]
+
+#diagnosis labels of the split data
+train_labels <- wbcd[1:469,1]
+test_labels <- wbcd[470:569,1]
+
+#creating KNN model
+test_prediction <- knn(train = wbcd_train, test = wbcd_test, cl = train_labels, k =21)
+
+#evaluate performance using gmodels
+#TN FP
+#FN TP
+CrossTable(x = test_labels, test_prediction, prop.chisq = FALSE)
+
+#using caret to look at performance 
+confusionMatrix(test_prediction, test_labels)
+
+#===================================================================
+#Observations
+#model accuracy is 98% however 2 malignant were classified as benign 
+#normalization of data may not be capturing outliers in features
+#===================================================================
+
+#try using z-score to capture outliers
+#can use scale to create z score, does not need lapply can apply to df
+wbcd_zscore <- as.data.frame(scale(wbcd[-1]))
+
+#view z score data 
+#mean should be 0 and min/max z-scores of >3 or <3 indicate extremely rare value
+# or +- 3 standard deviations from the mean if data is normal distribution probability is 0.3%
+summary(wbcd_zscore)
+
+#===================================================================
+#replicate process using z-score
+#===================================================================
+
+#split train test, data is random no need to randomize
+wbcd_train <- wbcd_zscore[1:469,]
+wbcd_test <- wbcd_zscore[470:569,]
+
+#diagnosis labels of the split data
+train_labels <- wbcd[1:469,1]
+test_labels <- wbcd[470:569,1]
+
+#creating KNN model
+test_prediction <- knn(train = wbcd_train, test = wbcd_test, cl = train_labels, k =21)
+
+#evaluate performance using gmodels
+#True Neg  | False Pos
+#False Neg | True Pos
+CrossTable(x = test_labels, test_prediction, prop.chisq = FALSE)
+confusionMatrix(test_prediction, test_labels)
+#===================================================================
+#Observations
+#model accuracy dropped to 95% 
+#****Using z-score did not improve model****
+#===================================================================
+
+#===================================================================
+#replicate using different k
+#===================================================================
+
+#rerun normalized train test
+#split train test, data is random no need to randomize
+wbcd_train <- wbcd_norm[1:469,]
+wbcd_test <- wbcd_norm[470:569,]
+
+#diagnosis labels of the split data
+train_labels <- wbcd[1:469,1]
+test_labels <- wbcd[470:569,1]
+
+#sequence for K by 3's
+k_seq <- seq(1, 27)
+
+#create a dataframe that shows false positives and false negatives for numerous k values
+#loop model to run with sequence of K and extract false negatives and positives
+#add to df called Results_per_K
+Results_per_K=NULL
+for (i in k_seq) {
+  test_prediction <- knn(train = wbcd_train, test = wbcd_test, cl = train_labels, k =i)
+  K <- i
+  FALSE_POSITIVE <- table(Predictions = test_prediction, TrueLabels = test_labels)[2,1]
+  FALSE_NEGATIVE <- table(Predictions = test_prediction, TrueLabels = test_labels)[1,2]
+Results_per_K = rbind(Results_per_K, data.frame(K, FALSE_POSITIVE, FALSE_NEGATIVE))
+}
+
+#===================================================================
+#summary
+#a K of 1 minimizes false negative but at the expense of increasing false positives
+# while both should be avoided, a k of 1 is better than a higher K because it reduces the chance of cancer not
+#being detected.  It goes without saying that the burden of a false positive comes with significant emotional
+#and financial consequences.  98% accuracy is strong, but in this application KNN is not the best modelit woudl be best to find a model with 99.9% accuracy
+
+#additional steps for model
+#test on numerous random samples of data to see how the model is expected to perform in the future
+#===================================================================
+
+
