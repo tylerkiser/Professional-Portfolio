@@ -133,10 +133,11 @@ Results_per_K = rbind(Results_per_K, data.frame(K, FALSE_POSITIVE, FALSE_NEGATIV
 #a K of 1 minimizes false negative but at the expense of increasing false positives
 # while both should be avoided, a k of 1 is better than a higher K because it reduces the chance of cancer not
 #being detected.  It goes without saying that the burden of a false positive comes with significant emotional
-#and financial consequences.  98% accuracy is strong, but in this application KNN is not the best modelit woudl be best to find a model with 99.9% accuracy
+#and financial consequences.  98% accuracy is strong, but it would be best to find a way to improve accuracy to 99.9%
 
 #additional steps for model
-#test on numerous random samples of data to see how the model is expected to perform in the future
+#test on numerous random samples of data to see how the model is expected to perform in the future and improve reliability of test results 
+#explore different models to improve accuracy
 #===================================================================
 
 
