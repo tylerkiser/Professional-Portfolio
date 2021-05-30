@@ -87,13 +87,13 @@ train_labels <- wbcd[1:469,1]
 test_labels <- wbcd[470:569,1]
 
 #creating KNN model
-test_prediction <- knn(train = wbcd_train, test = wbcd_test, cl = train_labels, k =21)
+test_prediction <- knn(train = wbcd_train, test = wbcd_test, cl = train_labels, k =1)
 
 #evaluate performance using gmodels
 #True Neg  | False Pos
 #False Neg | True Pos
 CrossTable(x = test_labels, test_prediction, prop.chisq = FALSE)
-confusionMatrix(test_prediction, test_labels)
+confusionMatrix(test_prediction, test_labels)['Accuracy']
 #===================================================================
 #Observations
 #model accuracy dropped to 95% 
@@ -113,6 +113,8 @@ wbcd_test <- wbcd_norm[470:569,]
 train_labels <- wbcd[1:469,1]
 test_labels <- wbcd[470:569,1]
 
+#===================================================================
+#Optimize K
 #sequence for K by 3's
 k_seq <- seq(1, 27)
 
@@ -133,11 +135,37 @@ Results_per_K = rbind(Results_per_K, data.frame(K, FALSE_POSITIVE, FALSE_NEGATIV
 #a K of 1 minimizes false negative but at the expense of increasing false positives
 # while both should be avoided, a k of 1 is better than a higher K because it reduces the chance of cancer not
 #being detected.  It goes without saying that the burden of a false positive comes with significant emotional
-#and financial consequences.  98% accuracy is strong, but it would be best to find a way to improve accuracy to 99.9%
-
-#additional steps for model
-#test on numerous random samples of data to see how the model is expected to perform in the future and improve reliability of test results 
-#explore different models to improve accuracy
+#and financial consequences.  98% accuracy is strong but could be better 99.9% accuracy would be needed
 #===================================================================
+
+#===================================================================
+#replicate model by training on 1000 random samples of 80% partitions
+#view performance on 1000 different test sets to see performance and test optimization methods
+#===================================================================
+
+  validate_model <- replicate(1000, {
+  train.index <- createDataPartition(wbcd$diagnosis, times = 1, p = 0.80, list = FALSE)
+  newtrain <- wbcd_norm[train.index,]
+  newtest <-  wbcd_norm[-train.index,]
+  newtrain_labels <- wbcd$diagnosis[train.index]
+  newtest_labels <- wbcd$diagnosis[-train.index]
+  
+  new_prediction <- knn(train = newtrain, test = newtest, cl = newtrain_labels, k =21)
+  confusionMatrix(new_prediction, newtest_labels)$overall["Accuracy"] 
+})
+
+#model performance
+mean(validate_model)
+sd(validate_model)
+min(validate_model)
+max(validate_model)
+
+#histogram of model accuracy
+hist(validate_model,
+     labels = paste0(round(hist(validate_model, plot = FALSE)$counts / length(validate_model) * 100, 1), "%"))
+     
+#There are rare instance where the model performs below 92%
+#test to see if performance spread can be reduced 
+
 
 
