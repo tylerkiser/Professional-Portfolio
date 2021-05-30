@@ -150,7 +150,7 @@ Results_per_K = rbind(Results_per_K, data.frame(K, FALSE_POSITIVE, FALSE_NEGATIV
   newtrain_labels <- wbcd$diagnosis[train.index]
   newtest_labels <- wbcd$diagnosis[-train.index]
   
-  new_prediction <- knn(train = newtrain, test = newtest, cl = newtrain_labels, k =21)
+  new_prediction <- knn(train = newtrain, test = newtest, cl = newtrain_labels, k =1)
   confusionMatrix(new_prediction, newtest_labels)$overall["Accuracy"] 
 })
 
