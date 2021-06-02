@@ -1,0 +1,160 @@
+# install.packages("klaR")
+library(tm)
+library(dplyr)
+library(SnowballC)
+library(caret)
+library(gmodels)
+library(wordcloud)
+library(e1071) #for naive bayes
+library(klaR)
+#can also use klaR for Naive Bayes
+
+# read in SMS data
+sms_raw <- read.csv("spam.csv", stringsAsFactors = F)%>%
+  rename("type" = "v1", "text" = "v2")%>%
+  select(-X, -X.1, -X.2)
+
+str(sms_raw)
+
+#convert type to factor
+sms_raw$type <- factor(sms_raw$type)
+
+#number of ham vs spam
+table(sms_raw$type)
+
+#create corpus of real text to use in model
+sms_corpus <- VCorpus(VectorSource(sms_raw$text))
+
+#how many documents in the corpus
+inspect(sms_corpus)
+
+#look at one of the texts in the corpus
+as.character(sms_corpus[[1]])
+
+#look at multiple texts in corpus
+lapply(sms_corpus[1:2], as.character)
+
+#CLEAN DATA
+#==========================================================================================
+#clean the corpus data using tmap which allows transformation to be applied to corpus
+#because tolower is not built within the tm package have to use content_transformer
+clean_sms_corpus <- tm_map(sms_corpus, content_transformer(tolower))
+#check
+as.character(clean_sms_corpus[[1]])
+
+#strip numbers from corpus
+clean_sms_corpus <- tm_map(clean_sms_corpus, removeNumbers)
+
+#remove stop words
+clean_sms_corpus <- tm_map(clean_sms_corpus, removeWords, stopwords())
+
+#remove punctuation
+clean_sms_corpus <- tm_map(clean_sms_corpus, removePunctuation)
+
+#stemming - reducing words to base form (ie learning, learned, learns, stem to learn)
+#wordStem() (from snowball) function for vector, stemDocument (from tm) for applying to entire corpus
+
+clean_sms_corpus <- tm_map(clean_sms_corpus, stemDocument)
+
+#remove leftover whitespace
+clean_sms_corpus <- tm_map(clean_sms_corpus, stripWhitespace)
+
+#check clean corpus
+lapply(clean_sms_corpus[1:2], as.character)
+#==========================================================================================
+
+#tokenize text split by each token (word) and split into DTM (document term matrix) DTM lists word frequency
+sms_dtm <- DocumentTermMatrix(clean_sms_corpus)
+
+#how to create DTM directly from raw data
+sms_dtm_fast <- DocumentTermMatrix(sms_corpus, control = list(
+  tolower = T,
+  removeNumbers = T,
+  stopwords = T,
+  removePunctuation = T,
+  stemming = T))
+
+sms_dtm
+sms_dtm_fast
+#small difference in two cleaning processes due to DTMFAST applying clenaing only after text strings have been split into words
+#DTMFAST is a fast solution but the order of cleaning matters, need to consider this when cleaning data, as processes vary
+
+#look at the DTM
+inspect(sms_dtm)
+names(sms_dtm)
+#Create test and train ***************Need to revist and figure out how to index using createDataPartition on DTM list******
+# set.seed(123)
+# train.index <- createDataPartition(sms_dtm$i, times = 1, p = 0.80, list = FALSE)
+# sms_dtm_train <- sms_dtm[train.index]
+# sms_dtm_test <- sms_dtm[-train.index]
+# sms_dtm_train_label <- sms_raw[train.index]$type
+# sms_dtm_test_label <- sms_raw[-train.index]$type
+
+#manual train index
+5572*.8
+sms_dtm_train <- sms_dtm[1:4457,]
+sms_dtm_test <- sms_dtm[4458:5572,]
+sms_train_labels <- sms_raw[1:4457,]$type
+sms_test_labels <- sms_raw[4458:5572,]$type
+
+#check data to make sure proportions are about the same
+prop.table(table(sms_train_labels))
+prop.table(table(sms_test_labels))
+
+
+#==========================================================================================
+#wordcloud
+wordcloud(clean_sms_corpus, min.freq=50, random.order = F, colors = brewer.pal(8, "Dark2"))
+
+#ubset spam and ham
+spam <- subset(sms_raw, type =="spam")
+ham <- subset(sms_raw, type =="ham")
+
+SPAMwordcloudword <- cloud(spam$text, random.order = F, colors = brewer.pal(8, "Dark2"))
+HAMwordcloudword <- wordcloud(ham$text, random.order = F, colors = brewer.pal(8, "Dark2"))
+#==========================================================================================
+
+
+#find frequent words
+freq_words <- findFreqTerms(sms_dtm_train,5)
+str(train_freq_words)
+
+#train and test filtered to high frequency words
+freq_sms_dtm_train <- sms_dtm_train[, freq_words]
+freq_sms_dtm_test <- sms_dtm_test[, freq_words]
+
+#Cant use Naive Bayes on numerical need to change to categorical
+#create function called convert counts that categorizes number as yes or no
+convert_counts <- function(x) {
+x <- ifelse(x>0, "Yes", "No")  
+}
+
+#can use apply to apply function to the entire matrix
+#MNOTES: MARGIN 2 is used for columns MARGIN 1 for rows
+sms_train <- apply(freq_sms_dtm_train, MARGIN = 2, convert_counts)
+sms_test <- apply(freq_sms_dtm_test, MARGIN = 2, convert_counts)
+
+#final model
+#==========================================================================================
+#create Naive Bayes model with laplace = 0 (default)
+sms_classifier <- naiveBayes(sms_train, sms_train_labels)
+
+sms_test_predict <- predict(sms_classifier, sms_test)
+
+#evaluate performance
+CrossTable(sms_test_predict, sms_test_labels, prop.chisq = F, prop.c = F, prop.r = F, dnn = c('predicted', 'actual'))
+
+confusionMatrix(sms_test_predict, sms_test_labels)
+#==========================================================================================
+
+#replicated Naive Bayes model with laplace = 1
+sms_classifier2 <- naiveBayes(sms_train, sms_train_labels, laplace = 1)
+
+sms_test_predict2 <- predict(sms_classifier2, sms_test)
+
+#evaluate performance with laplace = 1
+CrossTable(sms_test_predict2, sms_test_labels, prop.chisq = F, prop.c = F, prop.r = F, dnn = c('predicted', 'actual'))
+
+confusionMatrix(sms_test_predict2, sms_test_labels)
+
+#use laplace = 0, using 1 increases the # of ham predicted as spam which would impact the recipient of text negatively.
