@@ -1,0 +1,120 @@
+library(dplyr)
+library(C50)
+library(gmodels)
+
+credit <- read.csv("credit.csv")%>%
+  mutate(default = as.factor(default))
+
+prop.table(table(credit$checking_balance))
+prop.table(table(credit$savings_balance))
+
+summary(credit$months_loan_duration)
+summary(credit$amount)
+
+# num of default and proportion
+table(credit$default)
+prop.table(table(credit$default))
+
+#create train data
+#Note label train/test not needed for decision tree
+set.seed(123)
+train_index <- createDataPartition(credit$default, times = 1, p = 0.80, list = FALSE)
+credit_train <- credit[train_index,]
+credit_test <- credit[-train_index,]
+
+#check proportion align with orig
+prop.table(table(credit$default))
+prop.table(table(credit_train$default))
+prop.table(table(credit_test$default))
+
+#C50 model (column 17 is classification column remove from train portion of function)
+credit_model <-  C5.0(credit_train[-17], credit_train$default)
+
+#review performance
+credit_model
+summary(credit_model)
+
+#model prediction on test data set
+cred_pred <- predict(credit_model, credit_test)
+
+#results on test data
+CrossTable(credit_test$default, cred_pred, prop.chisq = F, prop.c = F,
+           dnn = c('actual default', 'predicted default'))
+#only 31 out of 60 actual loan defaults were predicted correctly need to improve
+#boosting - by combining weak learners - create a team that is much stronger than any learner alone
+#10 trials is the standard for reducing errors by about 25%
+
+credit_boost10 <- C5.0(credit_train[-17], credit_train$default, trials = 10)
+credit_boost10
+summary(credit_boost10)
+
+cred_boost10_pred <- predict(credit_boost10, credit_test)
+
+CrossTable(credit_test$default, cred_boost10_pred, prop.chisq = F, prop.c = F,
+           dnn = c('actual default', 'predicted default'))
+
+#boosting improved performance slightly
+
+#approach #2 - reject more borderline applicants to mitigate risk
+#apply penalty to cost matrix to penalize certain mistakes more severely than others
+
+#create cost matrix
+matrix_dimensions <- list(c("no", "yes"), c("no", "yes"))
+names(matrix_dimensions) <- c("predicted", "actual")
+
+matrix_dimensions
+
+#values to fill matrix
+#order
+# 1 pred no, act no
+# 1 pred yes, act no
+# 1 pred no, act yes
+# 1 pred yes, act yes
+
+# lets say loan default costs bank 4 times as much as missed opportunity
+#only impacts FALSE NEGATIVE 
+error_cost <- matrix(c(0,1,3.3,0), nrow = 2, dimnames = matrix_dimensions)
+error_cost
+
+#add cost to model
+credit_cost <- C5.0(credit_train[-17], credit_train$default, costs = error_cost)
+
+credit_cost_pred <- predict(credit_cost, credit_test)
+
+CrossTable(credit_test$default, credit_cost_pred, prop.chisq = F, prop.c = F,
+           dnn = c('actual default', 'predicted default'))
+
+#reduced FALSE NEG to 21%
+
+confusionMatrix(credit_cost_pred, credit_test$default)
+
+#loop results for different cost of errors to determine necessary level of risk mitigation
+ec_seq <- seq(2,20)
+
+Results_per_EC=NULL
+for (i in ec_seq) {
+  error_cost <- matrix(c(0,1,i,0), nrow = 2, dimnames = matrix_dimensions)
+  credit_cost <- C5.0(credit_train[-17], credit_train$default, costs = error_cost)
+  credit_cost_pred <- predict(credit_cost, credit_test)
+  EC <- i
+  FALSE_POSITIVE <- prop.table(table(Predicted = credit_cost_pred, Actual = credit_test$default))[2,1]
+  FALSE_NEGATIVE <- prop.table(table(Predicted = credit_cost_pred, Actual = credit_test$default))[1,2]
+  Results_per_EC = rbind(Results_per_EC, data.frame(EC, FALSE_POSITIVE, FALSE_NEGATIVE))
+} 
+
+str(Results_per_EC)
+ 
+
+#cost of error at multiple EC ratios
+Results_per_EC %>%
+ggplot()+
+  geom_line(aes(x = EC, y = FALSE_POSITIVE, color = "blue"), size = 2)+
+geom_line(aes(x = EC, y = FALSE_NEGATIVE, color = "orange"), size = 2)+
+  scale_color_discrete(name = "Classification", labels = c("FALSE_POSITIVE", "FALSE_NEGATIVE"))+
+  scale_x_continuous(breaks = c(seq(2,20)))+
+  scale_y_continuous(breaks = seq(0,1, by = .05))+
+  labs(
+    title = "Cost of Loan Risk",
+    x = "Cost of Error",
+    y = "Percent Error"
+  )
