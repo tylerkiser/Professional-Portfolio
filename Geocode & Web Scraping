@@ -1,0 +1,55 @@
+library(dplyr)
+library(tidygeocoder)
+library(OpenStreetMap)
+library(ggplot2)
+library(ggrepel)
+library(osmar)
+library(rvest)
+
+#URL for scrapping
+url <- "https://locations.wendys.com/united-states/pa/pittsburgh"
+wendys_url <- read_html("https://locations.wendys.com/united-states/pa/pittsburgh")
+
+#clean wendys data
+#==============================================================
+#scrap the address from the wendys website
+#make sure to add . before selector class name
+selector_name<-".c-AddressRow"
+
+fnames<-html_nodes(wendys_url, css = selector_name) %>%
+  html_text()
+
+df <- as.data.frame(fnames)%>%
+  filter(fnames != "US")
+
+#convert to matrix 
+wendys_df <- as.data.frame(matrix(df$fnames, ncol = 2, byrow = TRUE))
+  
+#create full address column
+wendys_df$location <- paste0(wendys_df$V1,",",wendys_df$V2)
+
+#create long and lat via geocode
+wendys_coordinates <- wendys_df%>%
+geocode(location, method = "arcgis" )
+#==============================================================
+
+#make a map of pgh using coordinates from openstreetmap.org
+#applies coordinates to the openmap function
+# # The openmap function downloads a street map and 
+# the openproj function projects it onto a latitude and longitude 
+# coordinate system so that we can overlay the coordinates
+pgh_map <- openmap( c(40.6151,-79.8241),c(40.2476,-80.1841))
+pgh_map.latlng <- openproj(pgh_map)
+
+#plot wendys locations on map
+autoplot.OpenStreetMap(pgh_map.latlng) +
+  theme_minimal() +
+  theme(      axis.text.y=element_blank(),
+              axis.title=element_blank(),
+              axis.text.x=element_blank(),
+              plot.margin = unit(c(0, 0, 0, 0), "cm")
+  ) +
+  geom_point(data=wendys_coordinates, aes(x=long, y=lat), color="navy", size=4, alpha=1)+
+  labs(
+    title = "Wendy's Pittsburgh Locations (using geocoding and webscraping)"
+  )
