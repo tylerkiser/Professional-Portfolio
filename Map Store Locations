@@ -1,0 +1,64 @@
+library(dplyr)
+library(tidygeocoder)
+library(OpenStreetMap)
+library(ggplot2)
+library(ggrepel)
+library(osmar)
+library(rvest)
+library(zipcodeR)
+
+#read in data and clean to USA
+target <- read.csv("target.csv")%>%
+  filter(Address.Subdivision != "AL", Address.Subdivision != "HI", Address.Latitude <=50, Address.Longitude >=-130)
+walmart <- read.csv("walmart.csv")%>%
+  filter(country == "US", latitude <=50, longitude >=-130)
+  
+  #read in population data
+pop <- zip_code_db%>%
+  filter( lat <=50, lng >=-130 & lat >=25)
+
+#set USA map boundary
+usa_map <- openmap( c(50,-130),c(25,-65))
+usa_map.latlng <- openproj(usa_map)
+
+#plot target and walmart data with population density
+plot <- autoplot.OpenStreetMap(usa_map.latlng) +
+  theme_minimal() +
+  theme(      axis.text.y=element_blank(),
+              axis.title=element_blank(),
+              axis.text.x=element_blank(),
+              plot.margin = unit(c(0, 0, 0, 0), "cm")
+  ) +
+  geom_point(data=pop, aes(x=lng, y=lat, size=population_density), alpha=0.1, color = "black", fill = NA)+
+  geom_point(data=walmart, aes(x=longitude, y=latitude, colour="blue"), size=0.2, alpha=2)+
+  geom_point(data=target, aes(x=Address.Longitude, y=Address.Latitude, colour="red"), size=0.2, alpha=2)+
+  scale_colour_manual(name = "Store Locations", values = c("blue", "red", "black"), labels = c("Walmart", "Target", "Population Density"))+
+labs(
+    title = "Walmart and Target Store Locations"
+  )
+
+#plot target and walmart data without population density
+plot_nodensity <- autoplot.OpenStreetMap(usa_map.latlng) +
+  theme_minimal() +
+  theme(      axis.text.y=element_blank(),
+              axis.title=element_blank(),
+              axis.text.x=element_blank(),
+              plot.margin = unit(c(0, 0, 0, 0), "cm")
+  ) +
+  geom_point(data=walmart, aes(x=longitude, y=latitude, colour="blue"), size=0.2, alpha=2)+
+  geom_point(data=target, aes(x=Address.Longitude, y=Address.Latitude, colour="red"), size=0.2, alpha=2)+
+  scale_colour_manual(name = "Store Locations", values = c("blue", "red", "black"), labels = c("Walmart", "Target", "Population Density"))+
+  labs(
+    title = "Walmart and Target Store Locations"
+  )
+
+#write out to PDF
+pdf("Target VS Walmart.pdf", paper = "a4r", width = 11, height = 8.5)
+print(plot)
+print(plot_nodensity)
+dev.off()
+
+
+
+
+
