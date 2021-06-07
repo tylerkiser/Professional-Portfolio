@@ -1,0 +1,51 @@
+library(rvest)
+library(dplyr)
+library(xml2)
+
+
+#page sequence
+page_result_start <- 10 # starting page 
+page_result_end <- 990 # last page results
+page_results <- seq(from = page_result_start, to = page_result_end, by = 10)
+
+#loop or collecting URLS of all pages for analyst search on indeed
+all_page_url=NULL
+first_page_url <- "https://www.indeed.com/jobs?q=analyst&l="
+for(i in seq(page_results)) {
+  url <- paste0(substr(first_page_url, 1, 37), "&start=", page_results[i])
+  all_page_url <- c(all_page_url, url)}
+#all urls needed to scrape data
+all_page_url <- c(first_page_url, all_page_url)
+
+#loop all URLs to read html xml2
+full_df <- data.frame()
+for(i in all_page_url){
+  page <- xml2::read_html(i)
+  # Putting it there avoids error messages such as "Error in open.connection(con, "rb") : Timeout was reached"
+  Sys.sleep(2)
+  
+  #get the job title
+  job_title <- page %>% 
+    rvest::html_nodes('[data-tn-element="jobTitle"]') %>%
+    rvest::html_attr("title")
+  
+  #get the company name
+  company_name <- page %>% 
+    rvest::html_nodes(".company") %>%
+    rvest::html_text() %>%
+    stringi::stri_trim_both()
+  
+  #get job location
+  job_location <- page %>% 
+    rvest::html_nodes(".location") %>%
+    rvest::html_text()
+  
+  # get links
+  links <- page %>% 
+    rvest::html_nodes(".jobsearch-SerpJobCard") %>%
+    rvest::html_attr("data-jk")
+  
+  df <- data.frame(job_title, company_name, job_location, links)
+  full_df <- rbind(full_df, df)}
+  
+  #resulting dataframe 1531 analyst jobs with job title, company name, and location
