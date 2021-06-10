@@ -1,0 +1,71 @@
+library(dplyr)
+library(class)
+library(gmodels)
+library(caret)
+library(gridExtra)
+
+setwd("C:/Users/tyler/Desktop/DATA FILES")
+#read in data
+heart <- read.csv("heart.csv", stringsAsFactors=FALSE)
+
+#reclassify feature as a factor and add labels (required for ML)
+heart$target <- factor(heart$target, levels = c(0,1),
+                       labels = c("No", "Yes"))
+
+#percent yes / no
+round(prop.table(table(heart$target))*100, digits = 1)
+
+#summarize 3 features
+summary(heart[c(colnames(heart))])
+#features have different scales need to normalize
+
+#normalize function to normalize all data between 0 and 1
+norm <- function(x){
+  return((x-min(x))/(max(x)-min(x)))
+}
+
+#test the norm function
+norm(c(1,2,3,4,5))
+norm(c(100,200,300,400,500))
+
+#normalize all of the columns in the df using lappy (skip col 1)
+heart_norm <- as.data.frame(lapply(heart[1:13], norm))
+
+heart_norm_full <- cbind(heart_norm, heart[14])
+
+#check summary of normalized data
+summary(heart_norm[c(colnames(heart_norm))])
+
+#split train test
+set.seed(123)
+train.index <- createDataPartition(heart$target, times = 1, p = 0.80, list = FALSE)
+heart_train <- heart_norm_full[train.index,]
+heart_test <-  heart_norm_full[-train.index,]
+
+
+#plot accuracy of GBMS based on 3, 5, 10, and 20 n.minobsinnode
+# Create a list to hold the plot objects.
+pltList <- list()
+vec <- c(3,5,10,20)
+for (i in vec) {
+  gbmGrid <-  expand.grid(interaction.depth = c(1, 5, 9), 
+                          n.trees = (1:30)*50, 
+                          shrinkage = 0.1,
+                          n.minobsinnode = i)
+  set.seed(321)
+  gbmfit <- train(target ~ ., data = heart_train, 
+                  method = "gbm", 
+                  trControl = trainControl(method = "cv"),
+                  verbose = FALSE,
+                  tuneGrid = gbmGrid)
+  #set theme and plot
+  # Create plot name.
+  pltName <- paste( 'gbm_stop', i, sep = '' )
+  trellis.par.set(caretTheme())
+  pltList[[ pltName ]] <- ggplot(gbmfit)+ labs(title = paste("minobsinnode", i))
+}
+
+#arrange plots
+n <- length(pltList)
+nCol <- floor(sqrt(n))
+do.call("grid.arrange", c(pltList, ncol=nCol))
