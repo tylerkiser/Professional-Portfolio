@@ -1,0 +1,16 @@
+#for ploting ggplot generated disitribution labels to avoid creating statistics columns
+
+ggplot(NB) +
+  aes(x = VARIABLE1, fill = VARIABLE2, colour = VARIABLE2) +
+  geom_bar(position = "fill")
+fig1 <- ggplot(NB)+
+  aes(x = VARIABLE1, fill = VARIABLE2, colour = VARIABLE2) +
+  geom_bar(position = "fill")
+ggplotly(fig1, originalData = FALSE)%>%
+  mutate(ydiff = ymax - ymin) %>% 
+  add_text(
+    x = ~x, y = ~(ymin + ymax) / 2,
+    text = ~ifelse(ydiff > 0.02, round(ydiff, 2), ""),
+    showlegend = FALSE, hoverinfo = "none",
+    color = I("white"), size = I(9)
+  )
