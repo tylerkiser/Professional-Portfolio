@@ -1,0 +1,261 @@
+#language R
+
+library(janitor)
+library(dplyr)
+library(DataExplorer)
+library(rpivotTable)
+library(tidyr)
+library(ggplot2)
+library(ggrepel)
+library(lubridate)
+
+#===================================================================================================================
+#SETUP
+#===================================================================================================================
+#remove scientific notation
+options(scipen=999)
+
+#function for working with NA's within ifelse
+falseifNA <- function(x){
+  ifelse(is.na(x), FALSE, x)
+}
+
+ifelse2 <- function(x, a, b){
+  ifelse(falseifNA(x), a, b)
+}
+
+#===================================================================================================================
+#READ IN DATA
+#===================================================================================================================
+setwd("C:/Users/tyler/Desktop/R/Case Study Data")
+
+#client demographics data
+df_final_demo <- read.delim("df_final_demo.txt", header=TRUE, sep=",")
+
+#client IDs for test and control groups
+df_final_experiment_clients <- read.delim("df_final_experiment_clients.txt", header=TRUE, sep=",")
+
+#web traffic KPIs
+#data for 3/15-4/30
+df_final_web_data_pt_1 <- read.delim("df_final_web_data_pt_1.txt", header=TRUE, sep=",")
+#data for 5/1 - 6/20
+df_final_web_data_pt_2 <- read.delim("df_final_web_data_pt_2.txt", header=TRUE, sep=",")
+
+
+#===================================================================================================================
+#CHECK DATA
+#===================================================================================================================
+#===================================================================================================================
+#CHECK FOR DUPS
+#===================================================================================================================
+
+#Check for dups using janitor package
+df_final_demo %>% get_dupes(client_id)
+df_final_experiment_clients %>% get_dupes(client_id)
+df_final_web_data_pt_1 %>% get_dupes()
+df_final_web_data_pt_2 %>% get_dupes()
+
+#***There are duplicates in df_final_web_data_pt_1 and df_final_web_data_pt_2 that will need to be removed
+#looks like these are duplicate timestamps for web activity ***
+
+#===================================================================================================================
+#CLEAN DATA TO REMOVE DUPS & CRATE FLAG FOR TEST TIMEFRAME
+#===================================================================================================================
+
+#clean data to remove dups from web data
+df_final_web_data_pt_1 <- unique(df_final_web_data_pt_1)
+df_final_web_data_pt_1$test_timeframe <- "Y"   
+
+df_final_web_data_pt_2 <- unique(df_final_web_data_pt_2)
+df_final_web_data_pt_2$test_timeframe <- "N"   
+
+#===================================================================================================================
+#CHECK FOR NAs
+#===================================================================================================================
+
+#check for NAs
+sapply(df_final_demo, function(x) sum(is.na(x)))
+sapply(df_final_experiment_clients, function(x) sum(is.na(x)))
+sapply(df_final_web_data_pt_1, function(x) sum(is.na(x)))
+sapply(df_final_web_data_pt_2, function(x) sum(is.na(x)))
+
+#***NAs in the test/control group df so not all clients are apart of the test
+#***small number of NAs in the demo data, looks like there is no demo data for these clients
+#check to see if any of those missing demographics clients were in the test or control
+check <- left_join(df_final_experiment_clients, df_final_demo, by = "client_id")
+sapply(check, function(x) sum(is.na(x)))
+#nearly all of them are in either the test or the control
+#will opt to keep them in the data because the test experience data is still relevant and missing demo is not material
+
+#===================================================================================================================
+#JOIN DATA FROM EACH FILE & CREATE SEGMENT GROUPS & ADD NEW VARIABLES
+#===================================================================================================================
+
+#join client data to demo data and create a group for # of client accounts
+clients_with_demo <- left_join(df_final_experiment_clients, df_final_demo, by = "client_id")%>%
+  mutate(client_acnt_grp = ifelse(num_accts <=2, "<=2", 
+                                  ifelse(num_accts >2, "3+", NA)))
+
+#creating groupings for continuous demographic variables (4 equally weighted groups - weightings are not exactly 25% but close)
+clients_with_demo$years_tenure_grp <- cut_number(clients_with_demo$clnt_tenure_yr, 4)
+clients_with_demo$client_age_grp <- cut_number(clients_with_demo$clnt_age, 4)
+clients_with_demo$client_bal_grp <- cut_number(clients_with_demo$bal, 4,dig.lab=8)
+clients_with_demo$client_calls_grp <- cut_number(clients_with_demo$calls_6_mnth, 4)
+clients_with_demo$client_logons_grp <- cut_number(clients_with_demo$logons_6_mnth, 4)
+
+#append web data just in case I need the longer period of data later
+df_final_web_data_full <- rbind(df_final_web_data_pt_1, df_final_web_data_pt_2)
+
+#===================================================================================================================
+#FINAL DATA PER CLIENT
+#===================================================================================================================
+#This final df summarizes data grouped by the client to summarizes the entire client journey regardless
+#number of unique sessions in a day or week
+
+client_measure_df <- left_join(df_final_web_data_full, clients_with_demo, by = "client_id")%>%
+  mutate(Variation = as.factor(Variation),
+         process_step = factor(process_step, levels = c("start", "step_1", "step_2", "step_3", "confirm")),
+         date_time = ymd_hms(date_time),
+         #seconds timestamp
+         timestamp = as.numeric(ymd_hms(date_time)),
+         day_of_week = weekdays(date_time),
+         #adding a date without a time
+         date_no_time = as.Date(date_time))%>%
+  #total client steps including duplicated steps and steps done on different days / sessions/ or devices
+  group_by(client_id)%>%
+  mutate(steps_per_client = round(rank(timestamp), 0),
+         total_steps_per_client = max(steps_per_client),
+         client_device_cnt = n_distinct(visitor_id),
+         client_visit_cnt = n_distinct(visit_id),
+         number_unique_days = n_distinct(date_no_time))%>%
+                                      
+  #regroup without visit detail fields and create client KPIs
+  group_by(Variation, test_timeframe, client_id, total_steps_per_client, clnt_tenure_yr, process_step, client_device_cnt, 
+           client_visit_cnt, number_unique_days,clnt_tenure_mnth, clnt_age, gendr, num_accts, bal, calls_6_mnth, 
+           logons_6_mnth, client_acnt_grp, years_tenure_grp, client_age_grp, client_bal_grp, 
+           client_calls_grp, client_logons_grp)%>%
+  summarise(process_step_cnt = sum(n()))%>%
+  #spread process step count into columns
+  spread(process_step, process_step_cnt)%>%
+  #this is a double check to ensure there are no duplicate records
+  unique(.)
+
+#check to ensure all client_id's are unique
+client_measure_df %>% filter(Variation == "Y") %>% get_dupes(client_id)
+
+#check client - this one should have 21 visits, across 8 days and 7 devices
+df_final_web_data_full%>%
+  dplyr::filter(client_id == '2128341')%>%
+  mutate(date = as.Date(date_time),
+         devices = n_distinct(visitor_id),
+         visits =n_distinct(visit_id),
+         days = n_distinct(date))%>%
+  select(devices, visits, days)%>%
+  unique(.)
+
+#===================================================================================================================
+#FINAL DATA PER VISIT
+#===================================================================================================================
+#This final df summarizes data for grouped by visit and summarizes the metric for each unique visit
+#Looking at visit separately will allow for more detail on each visit experience
+  
+visit_measure_df <- left_join(df_final_web_data_full, clients_with_demo, by = "client_id")%>%
+  mutate(Variation = as.factor(Variation),
+         process_step = factor(process_step, levels = c("start", "step_1", "step_2", "step_3", "confirm")),
+         date_time = ymd_hms(date_time),
+         #seconds timestamp
+         timestamp = as.numeric(ymd_hms(date_time)),
+         day_of_week = weekdays(date_time),
+         #adding a date without a time
+         date_no_time = as.Date(date_time))%>%
+  #creates unique identifier for each step per visit
+  group_by(visit_id)%>%
+  mutate(id = round(rank(timestamp), 0),
+         #total client steps including duplicated steps
+         total_visit_steps = max(id),
+         #time per visit
+         visit_time_min = round((max(timestamp)- min(timestamp))/60,1),
+         start_time_hr = max(hour(date_time)),
+         multiple_client_flag = n_distinct(client_id))%>%
+  #group and summarise for spreading process_step to create count of each process
+  group_by(Variation, test_timeframe, client_id, visitor_id, visit_id, process_step, date_no_time, day_of_week, start_time_hr, visit_time_min,
+           total_visit_steps, clnt_tenure_yr, clnt_tenure_mnth, clnt_age, gendr, num_accts, bal, calls_6_mnth, logons_6_mnth, 
+           client_acnt_grp, years_tenure_grp, client_age_grp, client_bal_grp, client_calls_grp, client_logons_grp, multiple_client_flag)%>%
+  summarise(process_step_cnt = sum(n()))%>%
+  spread(process_step, process_step_cnt)%>%
+  #this is a double check to ensure there are no duplicate records
+  unique(.)
+  
+#check to ensure all visit_id's are unique
+visit_measure_df %>% get_dupes(visit_id)
+#small number of duplicates from visits that span across multiple days OR visits that have more than 1 client_id
+#unsure if multiple client_ids per visit_id is a data integrity issue or if its possible that the client 
+#is able to complete the process with multiple accounts
+#multi-client visit IDs represent X% of data
+
+#===================================================================================================================
+#POSSIBLE DATA INTEGRITY ISSUES WITH FIXES FOR ADDING FLAG IF WANTING TO REMOVE THESE FROM THE EXPERIMENT
+#===================================================================================================================
+#1 - visits have greater than 30 min of activity on a single visit_id (which is not supposed to be possible)
+#this issue is not material and is about 2% of the data in the experiment (2.2% of test, 1.5% of control)
+
+#2 - <5 Step confirmations
+#this issue is not material and represents 1.0% of clients in the experiment (1.3% of test, 0.6% of control)
+#===================================================================================================================
+
+#(fix #1) removing strange data integrity issue with high minute visits 
+visit_measure_df$flag_visit_time_above30 <- ifelse(visit_measure_df$visit_time_min >30, "Y", "N")
+
+#(fix #2) issue with <5 step confirmations - adding flag to both DFs
+client_measure_df$flag_confirm_miss_steps <- ifelse2(client_measure_df$confirm >=1 & is.na(client_measure_df$start), "Y",
+                                                     ifelse2(client_measure_df$confirm >=1 & is.na(client_measure_df$step_1), "Y",
+                                                             ifelse2(client_measure_df$confirm >=1 & is.na(client_measure_df$step_2), "Y",
+                                                                     ifelse2(client_measure_df$confirm >=1 & is.na(client_measure_df$step_3), "Y", "N"))))
+   
+visit_measure_df$flag_confirm_miss_steps <- ifelse2(visit_measure_df$confirm >=1 & is.na(visit_measure_df$start), "Y",
+                                                     ifelse2(visit_measure_df$confirm >=1 & is.na(visit_measure_df$step_1), "Y",
+                                                             ifelse2(visit_measure_df$confirm >=1 & is.na(visit_measure_df$step_2), "Y",
+                                                                     ifelse2(visit_measure_df$confirm >=1 & is.na(visit_measure_df$step_3), "Y", "N"))))
+
+
+#===================================================================================================================
+#WRITE OUT DATA TO EXCEL
+#===================================================================================================================
+write.csv(client_measure_df, "client_measure_df.csv", row.names = F)
+write.csv(visit_measure_df, "visit_measure_df.csv", row.names = F)
+write.csv(clients_with_demo, "clients_with_demo.csv", row.names = F)
+
+
+#===================================================================================================================
+#CLIENT STEP EXAMPLES
+#===================================================================================================================
+
+one_step <- df_final_web_data_full %>%
+  filter(client_id == "1368")
+
+dup_steps <- 
+df_final_web_data_full %>%
+  filter(client_id == "13009")%>%
+  arrange(date_time)
+
+norm_steps <- 
+df_final_web_data_full %>%
+  filter(client_id == "1195")%>%
+  arrange(date_time)
+
+dupstep_multiday <- 
+df_final_web_data_full %>%
+  filter(client_id == "16135")%>%
+  arrange(date_time)
+
+#===================================================================================================================
+#DATA EXPLORATION
+#===================================================================================================================
+
+#automated data exploration reports
+create_report(client_measure_df)
+create_report(visit_measure_df)
+
+#dynamic html pivot charts / tables
+rpivotTable(data = client_measure_df)
+rpivotTable(data = visit_measure_df)
